@@ -1,0 +1,588 @@
+import React, { useState } from 'react';
+import { CreditCard, Plus, DollarSign, Calendar, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
+
+const CreditCardTracker = () => {
+  const [cards, setCards] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [activeTab, setActiveTab] = useState('cards');
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [showPayBill, setShowPayBill] = useState(false);
+
+  // Add new credit card
+  const addCard = (cardData) => {
+    const newCard = {
+      id: Date.now(),
+      ...cardData,
+      balance: 0,
+      availableCredit: cardData.creditLimit
+    };
+    setCards([...cards, newCard]);
+    setShowAddCard(false);
+  };
+
+  // Add new transaction
+  const addTransaction = (transactionData) => {
+    const newTransaction = {
+      id: Date.now(),
+      ...transactionData,
+      date: new Date().toISOString().split('T')[0]
+    };
+    
+    setTransactions([...transactions, newTransaction]);
+    
+    // Update card balance
+    setCards(cards.map(card => {
+      if (card.id === parseInt(transactionData.cardId)) {
+        const newBalance = card.balance + parseFloat(transactionData.amount);
+        return {
+          ...card,
+          balance: newBalance,
+          availableCredit: card.creditLimit - newBalance
+        };
+      }
+      return card;
+    }));
+    
+    setShowAddTransaction(false);
+  };
+
+  // Pay credit card bill
+  const payBill = (cardId, amount) => {
+    const paymentTransaction = {
+      id: Date.now(),
+      cardId: cardId,
+      amount: -parseFloat(amount),
+      description: 'Payment',
+      category: 'Payment',
+      date: new Date().toISOString().split('T')[0]
+    };
+    
+    setTransactions([...transactions, paymentTransaction]);
+    
+    setCards(cards.map(card => {
+      if (card.id === cardId) {
+        const newBalance = Math.max(0, card.balance - parseFloat(amount));
+        return {
+          ...card,
+          balance: newBalance,
+          availableCredit: card.creditLimit - newBalance
+        };
+      }
+      return card;
+    }));
+    
+    setShowPayBill(false);
+  };
+
+  // Delete card
+  const deleteCard = (cardId) => {
+    setCards(cards.filter(card => card.id !== cardId));
+    setTransactions(transactions.filter(transaction => transaction.cardId !== cardId));
+  };
+
+  // Get transactions for a specific card
+  const getCardTransactions = (cardId) => {
+    return transactions.filter(t => t.cardId === cardId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  // Get total spending by category
+  const getSpendingByCategory = () => {
+    const categoryTotals = {};
+    transactions.forEach(t => {
+      if (t.amount > 0) {
+        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+      }
+    });
+    return categoryTotals;
+  };
+
+  const AddCardForm = () => {
+    const [formData, setFormData] = useState({
+      name: '',
+      lastFourDigits: '',
+      creditLimit: '',
+      interestRate: '',
+      dueDate: ''
+    });
+
+    const handleSubmit = () => {
+      if (!formData.name || !formData.lastFourDigits || !formData.creditLimit) return;
+      
+      addCard({
+        ...formData,
+        creditLimit: parseFloat(formData.creditLimit),
+        interestRate: parseFloat(formData.interestRate)
+      });
+      setFormData({ name: '', lastFourDigits: '', creditLimit: '', interestRate: '', dueDate: '' });
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">Add New Credit Card</h3>
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Card Name (e.g., Chase Sapphire)"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            />
+            <input
+              type="text"
+              placeholder="Last 4 Digits"
+              value={formData.lastFourDigits}
+              onChange={(e) => setFormData({...formData, lastFourDigits: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+              maxLength="4"
+            />
+            <input
+              type="number"
+              placeholder="Credit Limit"
+              value={formData.creditLimit}
+              onChange={(e) => setFormData({...formData, creditLimit: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            />
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Interest Rate (%)"
+              value={formData.interestRate}
+              onChange={(e) => setFormData({...formData, interestRate: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            />
+            <input
+              type="number"
+              placeholder="Due Date (Day of Month)"
+              value={formData.dueDate}
+              onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+              min="1"
+              max="31"
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={handleSubmit}
+                className="flex-1 bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700"
+              >
+                Add Card
+              </button>
+              <button 
+                onClick={() => setShowAddCard(false)}
+                className="flex-1 bg-gray-300 text-gray-700 p-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AddTransactionForm = () => {
+    const [formData, setFormData] = useState({
+      cardId: '',
+      amount: '',
+      description: '',
+      category: 'General'
+    });
+
+    const categories = ['General', 'Food', 'Gas', 'Shopping', 'Entertainment', 'Bills', 'Travel', 'Healthcare', 'Other'];
+
+    const handleSubmit = () => {
+      if (!formData.cardId || !formData.amount || !formData.description) return;
+      
+      addTransaction(formData);
+      setFormData({ cardId: '', amount: '', description: '', category: 'General' });
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">Add Transaction</h3>
+          <div className="space-y-4">
+            <select
+              value={formData.cardId}
+              onChange={(e) => setFormData({...formData, cardId: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            >
+              <option value="">Select Card</option>
+              {cards.map(card => (
+                <option key={card.id} value={card.id}>
+                  {card.name} (****{card.lastFourDigits})
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Amount"
+              value={formData.amount}
+              onChange={(e) => setFormData({...formData, amount: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            />
+            <input
+              type="text"
+              placeholder="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            />
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({...formData, category: e.target.value})}
+              className="w-full p-2 border rounded-lg"
+            >
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button 
+                onClick={handleSubmit}
+                className="flex-1 bg-green-600 text-white p-2 rounded-lg hover:bg-green-700"
+              >
+                Add Transaction
+              </button>
+              <button 
+                onClick={() => setShowAddTransaction(false)}
+                className="flex-1 bg-gray-300 text-gray-700 p-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const PayBillForm = () => {
+    const [selectedCard, setSelectedCard] = useState('');
+    const [paymentAmount, setPaymentAmount] = useState('');
+
+    const handleSubmit = () => {
+      if (!selectedCard || !paymentAmount) return;
+      
+      payBill(parseInt(selectedCard), paymentAmount);
+      setSelectedCard('');
+      setPaymentAmount('');
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">Pay Credit Card Bill</h3>
+          <div className="space-y-4">
+            <select
+              value={selectedCard}
+              onChange={(e) => setSelectedCard(e.target.value)}
+              className="w-full p-2 border rounded-lg"
+            >
+              <option value="">Select Card to Pay</option>
+              {cards.filter(card => card.balance > 0).map(card => (
+                <option key={card.id} value={card.id}>
+                  {card.name} (****{card.lastFourDigits}) - Balance: ${card.balance.toFixed(2)}
+                </option>
+              ))}
+            </select>
+            {selectedCard && (
+              <div className="text-sm text-gray-600">
+                Current Balance: ${cards.find(c => c.id === parseInt(selectedCard))?.balance.toFixed(2)}
+              </div>
+            )}
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Payment Amount"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              className="w-full p-2 border rounded-lg"
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={handleSubmit}
+                className="flex-1 bg-red-600 text-white p-2 rounded-lg hover:bg-red-700"
+              >
+                Make Payment
+              </button>
+              <button 
+                onClick={() => setShowPayBill(false)}
+                className="flex-1 bg-gray-300 text-gray-700 p-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const totalBalance = cards.reduce((sum, card) => sum + card.balance, 0);
+  const totalCreditLimit = cards.reduce((sum, card) => sum + card.creditLimit, 0);
+  const totalAvailableCredit = cards.reduce((sum, card) => sum + card.availableCredit, 0);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+            <CreditCard className="text-blue-600" />
+            Credit Card Tracker
+          </h1>
+          
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-red-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-red-800">Total Balance</h3>
+              <p className="text-2xl font-bold text-red-600">${totalBalance.toFixed(2)}</p>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-green-800">Available Credit</h3>
+              <p className="text-2xl font-bold text-green-600">${totalAvailableCredit.toFixed(2)}</p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-blue-800">Total Credit Limit</h3>
+              <p className="text-2xl font-bold text-blue-600">${totalCreditLimit.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setShowAddCard(true)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={16} />
+              Add Card
+            </button>
+            <button
+              onClick={() => setShowAddTransaction(true)}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+              disabled={cards.length === 0}
+            >
+              <PlusCircle size={16} />
+              Add Transaction
+            </button>
+            <button
+              onClick={() => setShowPayBill(true)}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+              disabled={cards.filter(card => card.balance > 0).length === 0}
+            >
+              <MinusCircle size={16} />
+              Pay Bill
+            </button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="border-b mb-6">
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => setActiveTab('cards')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'cards' 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Cards
+              </button>
+              <button
+                onClick={() => setActiveTab('transactions')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'transactions' 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Transactions
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'analytics' 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Analytics
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {/* Cards Tab */}
+        {activeTab === 'cards' && (
+          <div className="space-y-4">
+            {cards.length === 0 ? (
+              <div className="bg-white rounded-lg shadow p-8 text-center">
+                <CreditCard className="mx-auto text-gray-400 mb-4" size={48} />
+                <p className="text-gray-500">No credit cards added yet. Click "Add Card" to get started!</p>
+              </div>
+            ) : (
+              cards.map(card => (
+                <div key={card.id} className="bg-white rounded-lg shadow-lg p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-800">{card.name}</h3>
+                      <p className="text-gray-600">****{card.lastFourDigits}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteCard(card.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Current Balance</p>
+                      <p className="text-lg font-semibold text-red-600">${card.balance.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Available Credit</p>
+                      <p className="text-lg font-semibold text-green-600">${card.availableCredit.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Credit Limit</p>
+                      <p className="text-lg font-semibold text-blue-600">${card.creditLimit.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Utilization</p>
+                      <p className="text-lg font-semibold text-purple-600">
+                        {((card.balance / card.creditLimit) * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar for utilization */}
+                  <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                    <div 
+                      className={`h-2 rounded-full ${
+                        (card.balance / card.creditLimit) * 100 > 80 ? 'bg-red-500' :
+                        (card.balance / card.creditLimit) * 100 > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min((card.balance / card.creditLimit) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+
+                  {/* Recent transactions for this card */}
+                  <div>
+                    <h4 className="font-semibold mb-2">Recent Transactions</h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {getCardTransactions(card.id).slice(0, 5).map(transaction => (
+                        <div key={transaction.id} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
+                          <div>
+                            <p className="font-medium">{transaction.description}</p>
+                            <p className="text-gray-500">{transaction.category} • {transaction.date}</p>
+                          </div>
+                          <p className={`font-semibold ${transaction.amount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {transaction.amount > 0 ? '+' : ''}${transaction.amount.toFixed(2)}
+                          </p>
+                        </div>
+                      ))}
+                      {getCardTransactions(card.id).length === 0 && (
+                        <p className="text-gray-500 text-sm">No transactions yet</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Transactions Tab */}
+        {activeTab === 'transactions' && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">All Transactions</h2>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {transactions.sort((a, b) => new Date(b.date) - new Date(a.date)).map(transaction => {
+                const card = cards.find(c => c.id === transaction.cardId);
+                return (
+                  <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">{transaction.description}</p>
+                      <p className="text-sm text-gray-600">
+                        {card?.name} (****{card?.lastFourDigits}) • {transaction.category} • {transaction.date}
+                      </p>
+                    </div>
+                    <p className={`font-semibold ${transaction.amount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {transaction.amount > 0 ? '+' : ''}${transaction.amount.toFixed(2)}
+                    </p>
+                  </div>
+                );
+              })}
+              {transactions.length === 0 && (
+                <p className="text-gray-500 text-center py-8">No transactions recorded yet</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Spending by Category</h2>
+              <div className="space-y-3">
+                {Object.entries(getSpendingByCategory()).map(([category, amount]) => (
+                  <div key={category} className="flex justify-between items-center">
+                    <span className="font-medium">{category}</span>
+                    <span className="text-lg font-semibold text-red-600">${amount.toFixed(2)}</span>
+                  </div>
+                ))}
+                {Object.keys(getSpendingByCategory()).length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No spending data available</p>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Card Utilization Overview</h2>
+              <div className="space-y-4">
+                {cards.map(card => (
+                  <div key={card.id} className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{card.name}</span>
+                      <span className="text-sm text-gray-600">
+                        {((card.balance / card.creditLimit) * 100).toFixed(1)}% utilized
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div 
+                        className={`h-3 rounded-full ${
+                          (card.balance / card.creditLimit) * 100 > 80 ? 'bg-red-500' :
+                          (card.balance / card.creditLimit) * 100 > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min((card.balance / card.creditLimit) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>${card.balance.toFixed(2)} used</span>
+                      <span>${card.availableCredit.toFixed(2)} available</span>
+                    </div>
+                  </div>
+                ))}
+                {cards.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">Add credit cards to see utilization data</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Forms */}
+        {showAddCard && <AddCardForm />}
+        {showAddTransaction && <AddTransactionForm />}
+        {showPayBill && <PayBillForm />}
+      </div>
+    </div>
+  );
+};
+
+export default CreditCardTracker;
